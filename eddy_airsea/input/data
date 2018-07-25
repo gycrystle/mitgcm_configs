@@ -5,8 +5,9 @@
 # Continuous equation parameters
  &PARM01
  tRefFile='tref.box',
- viscAh=10.,
- viscAz=1.E-5,
+ viscAhgrid=3.333E-3,
+ viscAz=4.E-3,
+ viscA4grid=2.6E-2,
  no_slip_sides=.FALSE.,
  no_slip_bottom=.FALSE.,
  diffKhT=10.,
@@ -27,7 +28,7 @@
  staggerTimeStep=.TRUE.
  implicitDiffusion=.TRUE.,
  implicitviscosity=.TRUE.,
-# usesinglecpuio=.TRUE.,
+ usesinglecpuio=.TRUE.,
  &
 
 # Elliptic solver parameters
@@ -40,13 +41,13 @@
 
 # Time stepping parameters
  &PARM03
- nIter0=0,
- endTime=864000,
+ nIter0=7200,
+ endTime=1296000,
  deltaT=120.0,
  abEps=0.01,
  pChkptFreq=0.0,
  chkptFreq=0.0,
- dumpFreq=3600.0,
+ dumpFreq=7200.0,
  monitorSelect=2,
  monitorFreq=21600.,
 # pickupSuff='ckptA'
