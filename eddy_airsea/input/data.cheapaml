@@ -28,4 +28,5 @@
  usetimevarblh=.FALSE.,
  useclouds=.FALSE.,
  usedlongwave=.FALSE.,
+ useRelativeWind=.TRUE.,
  &
