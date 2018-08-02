@@ -8,7 +8,7 @@ import def_radius
 from scipy.optimize import curve_fit
 
 def func(x, a, b, c):
-  return 5.5 * np.exp(-6.0 * (x/1500)**1.0) + 13.6
+  return a * np.exp(-b * (x/1500)**gamma) + c
 
 plt.ion()
 
@@ -22,13 +22,13 @@ alphaK = 2.0e-4
 g0 = 9.8
 f0 = 6.5e-5
 # options
-barotrop_mod = 0 # to turn on barotopic eddy mode
-sponge = 1 # 1 with sponge, 0 no sponge
+barotrop_mod = 2 # 1 for barotropic, 0 for baroclinic eddy, 2 for barotropic eddy with stratification
+sponge = 1 # 1 with nested domain
 
 #% ================== NEW GRID =====================================
-si_x = 250
-si_y = 250
-si_z = 75
+si_x = 120
+si_y = 120
+si_z = 100
 si_x1 = si_x + 1
 si_y1 = si_y + 1
 si_z1 = si_z + 1
@@ -36,7 +36,7 @@ si_z1 = si_z + 1
 # in m
 Lx = 300.0e3
 Ly = 300.0e3
-Lz = 1500
+Lz = 300
 
 dx = Lx/si_x;
 dy = Ly/si_y;
@@ -46,7 +46,7 @@ dy = Ly/si_y;
 
 if sponge == 1:
   dxs = [dx*16,dx*8,dx*4,dx*2,dx,dx*2,dx*4,dx*8,dx*16]
-  si_xs = [10,10,10,10,si_x,10,10,10,10]
+  si_xs = [5,5,10,10,si_x,10,10,5,5]
   si_xssum = np.cumsum(si_xs)
 #
   xx1=np.linspace(0,si_xssum[-1],si_xssum[-1]+1)
@@ -85,7 +85,7 @@ xv,yv = np.meshgrid(xx,yy1[:-1])
 xc,yc = np.meshgrid(xx1,yy1) 
 
 # Vertical grid 
-if barotrop_mod ==1:
+if (barotrop_mod ==1) or (barotrop_mod == 2):
 #create uniform vertical grid
   # xf is % of grid points
   xf = [0, 0.5, 1]
@@ -140,41 +140,50 @@ dz1.astype(binprec).tofile('dz.box')
 
 #% ============== background density profile ===================
 if barotrop_mod == 1:
-  stratification = 0
+  N2 = 0.0
+  temp_i = -N2/g0/alphaK*zc
+  temp_i = temp_i - temp_i[-1] 
 else:
-  stratification = 1 # choose stratification here
-#overwrite strat
-#stratification = 0
-# Constant stratification
-if stratification == 0:
-  N2 = 1e-5#0.0 #3e-5 0 for barotopic eddy
+# choose stratification: 1 for linear; 2 for exponential; 3 for fitted data
+  stratification = 2 
+# Insitu data just to compare, not used as input
+  z_ref=np.linspace(5,2000,400)
+# Temperature reference
+# Choose file available: temp_ref_summer_autumn.mat or temp_ref_winter.mat
+  temp_ref_file1=sio.loadmat('temp_ref_summer_autumn.mat') # 
+  temp_ref1 = temp_ref_file1['temp'] # name of the variable in file.mat 'temp' or 'mPtempout'
+  temp_ref_file2=sio.loadmat('temp_ref_winter.mat')
+  temp_ref2 = temp_ref_file2['mPtempout']
+  tref1 = np.interp(zc,z_ref,temp_ref1[:,0])
+  tref2 = np.interp(zc,z_ref,temp_ref2[:,0])
+#
+# Density anomaly data from 3D construction
+  rho_data_file=sio.loadmat('rhodata.mat') 
+  rho_data = rho_data_file['ewq']
+  r_rho = np.linspace(-100,100,201)
+#
+  rho_anomd = np.interp(zc,z_ref,rho_data[:,100]) # density anomaly @ core
+
+# Stratification
+if stratification == 1:
+  N2 = 1e-5 #0.0 #3e-5 0 for barotopic eddy
   temp_i = -N2/g0/alphaK*zc
   temp_i = temp_i - temp_i[-1]
-elif stratification == 1:
-  temp_ref_argo=sio.loadmat('temp_ref_argo.mat')
-  temp_ref = temp_ref_argo['temp']
-  temp_ref_art=sio.loadmat('art_temp_ref.mat')
-  temp_ref1 = temp_ref_art['mPtempout']
-#  temp_ref_argo=sio.loadmat('wintertemp.mat')
-#  temp_ref = temp_ref_argo['winter_mtemp']
-#
-#  N2 = 3e-5#0.0 #3e-5 0 for barotopic eddy
-#  temp_i = -N2/g0/alphaK*zc
-#  temp_i = temp_i - temp_i[-1]
-#
-  rho_dataie=sio.loadmat('rhodata.mat')
-  rho_data = rho_dataie['ewq']
-  r_rho = np.linspace(-100,100,201)
-  z_ref=np.linspace(5,2000,400)
+elif stratification == 2:
+  a = 5.5 # ~temp @surf - temp @bottom
+  b = 6.0 
+  c = 13.6 # temp min
+  gamma = 1.0 # 1.0 for exponential; 2.0 for gaussian profile
+  temp_i = func(zc, a, b, c)
+elif stratification == 3:
+  temp_ref = temp_ref1 # temp_ref1 or temp_ref2
 # Make smooth
-  tref_opt, tref_cov = curve_fit(func, z_ref, temp_ref1[:,0])
+  gamma = 1.5 # choose fit shape: 1.0 for exponential; 2.0 for gaussian profile
+  tref_opt, tref_cov = curve_fit(func, z_ref, temp_ref[:,0])
   tref_smooth = func(zc, *tref_opt)
-  tref_art= np.interp(zc,z_ref,temp_ref1[:,0])
-#Choose the background profile 
-  tref_aut= np.interp(zc,z_ref,temp_ref[:,0])
-  temp_i = tref_smooth #tref_aut # tref_smooth
-  rho_anomd = np.interp(zc,z_ref,rho_data[:,100])
-
+#Choose the background profile
+  temp_i = tref_smooth #choose tref_smooth or tref1 or tref2
+#
 temp_i = temp_i.reshape((si_z,1,1))
 rho_anomd = rho_anomd.reshape((si_z,1,1))
 
@@ -188,20 +197,20 @@ vvel   = np.zeros((si_z,si_y,si_x));
 H = dz1.cumsum()[-1]
 landh = -H + landh
 
-#gaussian eddy
+## Initialize eddy
 x_c = xx[int(si_x/2)] # x center
 y_c = yy[int(si_y/2)] # y center
 Rmax = 25e3    # radius of max velocity of eddy
 
 DeltaT = 2.0   # SST anomaly
 z0 = 200.0     # characteristic depth (m)
-vmax = -0.26     # m/s
+vmax = -0.05   # m/s
 
 vel_profile = 1 # Horizontal velocity profile function (1: exponential or gaussian ; 2:Hyperbolic)
 alpha = 2 # alpha = 2 for gaussian
 
 ###====== Vertical profile =================
-if barotrop_mod == 1:
+if (barotrop_mod == 1) or (barotrop_mod == 2):
 # vertical profile
   FZ = 1+0.0*zc
 # vertical derivative
@@ -209,11 +218,10 @@ if barotrop_mod == 1:
 else:
 # vertical profile
 #  FZ = 1-scipy.special.erf(zc/z0)
-  FZ = np.exp(-zc**2/z0**2/2)
+  FZ = np.exp(-zc**2/z0**2/2) # gaussian
 # vertical derivative
 #  FpZ = -1/z0*2/np.sqrt(np.pi)*np.exp(-zc**2/z0**2)
   FpZ = -2*zc/(2*z0**2)*np.exp(-zc**2/z0**2/2)
-
 
 FZ = FZ.reshape(si_z,1,1)
 FpZ = FpZ.reshape(si_z,1,1)
@@ -272,7 +280,7 @@ def comp_p(x,func):
 
 rr = np.linspace(0.0,4*Lx, 10*si_x)
 p1 = [ comp_p(x, geostrophic_part) for x in rr.flatten() ]
-p2 = [ comp_p(x, cyclogeo_part) for x in rr.flatten() ]#trying to compute a correction term
+p2 = [ comp_p(x, cyclogeo_part) for x in rr.flatten() ]#compute correction term
 
 fint1 = scipy.interpolate.interp1d(rr, p1)
 fint2 = scipy.interpolate.interp1d(rr, p2) #correction term
@@ -286,10 +294,13 @@ p_out2 = p_out2 - p_out2[0,0]
 
 dpdz = FpZ*np.tile(p_out1,[si_z,1,1]) + 2*FZ*FpZ*np.tile(p_out2,[si_z,1,1])
 rhop= dpdz/g0
-rho_bck = rho_const*(1-alphaK*temp_i)
+
 # convert to temperature
 theta_a = -rhop/(rho_const*alphaK) 
 theta = theta_a + temp_i
+
+# background density
+rho_bck = rho_const*(1-alphaK*temp_i) 
 
 # free surface
 pres = FZ*np.tile(p_out1,[si_z,1,1]) + FZ**2*np.tile(p_out2,[si_z,1,1])
@@ -400,14 +411,19 @@ instability = np.diff((rho_bck+rhop), axis=0)
 vmin = np.min(vvel)
 vcont = np.linspace(vmin,-vmin,6)
 
+# plot domain
+imain_start = int(np.sum(si_xs[:4]))
+imain_end = int(si_x-np.sum(si_xs[-4:]))
+idepth = 99
+
 v_gauss=vel_hor(rad_gu,1)
 v_hyprb=vel_hor(rad_gu,2)
 
-if barotrop_mod == 0:
+if (barotrop_mod == 0) or (barotrop_mod == 2):
   plt.figure()
-  plt.contourf(xx[40:290]*1e-3,-zc[:70],theta[:70,int(si_x/2),40:290],50)
+  plt.contourf(xx[imain_start:imain_end]*1e-3,-zc[:idepth],theta[:idepth,int(si_x/2),imain_start:imain_end],50)
   plt.colorbar(label="Theta (K)")
-  plt.contour(xx[40:290]*1e-3,-zc[:70],vvel[:70,int(si_x/2),40:290],vcont,colors='k')
+  plt.contour(xx[imain_start:imain_end]*1e-3,-zc[:idepth],vvel[:idepth,int(si_x/2),imain_start:imain_end],vcont,colors='k')
   plt.xlabel("x (km)")
   plt.ylabel("z (m)")
   plt.title("Temperature (color) and velocity (contours)")
@@ -415,9 +431,9 @@ if barotrop_mod == 0:
   plt.savefig("surf_eddy_c.png")
 
 plt.figure()
-plt.contourf(xx[40:290]*1e-3,-zc,vvel[:,int(si_x/2),40:290],50)
+plt.contourf(xx[imain_start:imain_end]*1e-3,-zc,vvel[:,int(si_x/2),imain_start:imain_end],50)
 plt.colorbar(label="V [m/s]")
-plt.contour(xx[40:290]*1e-3,-zc,vvel[:,int(si_x/2),40:290],vcont,colors='0.6')
+plt.contour(xx[imain_start:imain_end]*1e-3,-zc,vvel[:,int(si_x/2),imain_start:imain_end],vcont,colors='0.6')
 plt.xlabel("x (km)")
 plt.ylabel("z (m)")
 plt.title("Velocity")
@@ -454,9 +470,8 @@ plt.close()
 fig=plt.figure(figsize=(8,6))
 ax7=fig.add_subplot(1, 2, 1)
 plt.plot(temp_i[:,0,0], -zc, label='background temperature')
-#plt.plot(tref_smooth, -zc)
-plt.plot(tref_art.squeeze(), -zc, label='winter')
-plt.plot(tref_aut.squeeze(), -zc, label='summer')
+plt.plot(tref2.squeeze(), -zc, label='winter')
+plt.plot(tref1.squeeze(), -zc, label='summer')
 ax7.xaxis.tick_top()
 ax7.xaxis.set_ticks_position('both')
 ax7.xaxis.set_major_locator(plt.MaxNLocator(5))
@@ -466,9 +481,8 @@ plt.ylabel("Depth [m]")
 #plt.title("Background temperature")
 ax8=fig.add_subplot(1, 2, 2)
 ax8.plot(rho_bck[:,0,0], -zc, label='background')
-ax8.plot(rho_bck[:,0,0]+rhop[:,165,165], -zc, label='core cyclone')
-ax8.plot(rho_bck[:,0,0]-rhop[:,165,165], -zc, label='core anticyclone')
-#plt.plot(rho_bck[:,0,0]+rhop[:,165,165], -zc, label='core')
+ax8.plot(rho_bck[:,0,0]+abs(rhop[:,int(si_x/2),int(si_x/2)]), -zc, label='core cyclone')
+ax8.plot(rho_bck[:,0,0]-abs(rhop[:,int(si_x/2),int(si_x/2)]), -zc, label='core anticyclone')
 ax8.legend(loc='lower left', fontsize=10)
 ax8.xaxis.tick_top()
 ax8.xaxis.set_ticks_position('both')
@@ -481,8 +495,8 @@ plt.savefig("Background_state.png")
 
 plt.figure(figsize=(3.5,6))
 plt.plot(rho_bck[:,0,0], -zc, label='background')
-plt.plot(rho_bck[:,0,0]+rhop[:,165,165], -zc, label='core cyclone')
-plt.plot(rho_bck[:,0,0]-rhop[:,165,165], -zc, label='core anticyclone')
+plt.plot(rho_bck[:,0,0] + abs(rhop[:,int(si_x/2),int(si_x/2)]), -zc, label='core cyclone')
+plt.plot(rho_bck[:,0,0] - abs(rhop[:,int(si_x/2),int(si_x/2)]), -zc, label='core anticyclone')
 plt.xlabel("Density")
 plt.ylabel("Depth [m]")
 plt.title("Density profile")
@@ -493,7 +507,7 @@ plt.savefig("coredens_profile.png")
 
 plt.figure(figsize=(4.5,6))
 plt.plot(rho_anomd[20:,0,0], -zc[20:], label='core 3D-cons')
-plt.plot(rhop[:,165,165], -zc, label='core Initial Cond')
+plt.plot(rhop[:,int(si_x/2),int(si_x/2)], -zc, label='core Initial Cond')
 #plt.plot(rho_anomd[49:,0,0], -zc[49:], label='@Rmax 3D-cons')
 #plt.plot(rhop[:,165,165], -zc, label='@Rmax Initial Cond')
 plt.xlabel("Density anomaly [kg^3/m]")
@@ -507,7 +521,7 @@ plt.savefig("rho_anom.png")
 fig=plt.figure(figsize=(7.5,9))
 ax=fig.add_subplot(2, 1, 1)
 ax.set_aspect(1)
-plt.contourf(xx[40:290]*1e-3,yy[40:290]*1e-3,eta[40:290,40:290],100)
+plt.contourf(xx[imain_start:imain_end]*1e-3,yy[imain_start:imain_end]*1e-3,eta[imain_start:imain_end,imain_start:imain_end],100)
 cb = plt.colorbar(label="Eta (m)")
 #cb.set_ticklabels([r'$<10^{0}$', 1, 2, r'$10^{14}$', r'$10^{14}+12345678$'])
 cb.set_label(r'$\eta$ (m)', labelpad=-40, y=1.1, rotation=0)
@@ -518,8 +532,8 @@ plt.suptitle('SSH Anomaly', fontsize=13)
 
 #
 ax2 = fig.add_subplot(2, 1, 2)
-ax2.set_aspect(8)
-plt.plot(xx[40:290]*1e-3,eta[int(si_x/2),40:290]*100)
+ax2.set_aspect(10) #8
+plt.plot(xx[imain_start:imain_end]*1e-3,eta[int(si_x/2),imain_start:imain_end]*100)
 plt.xlabel("x (km)")
 plt.ylabel(r'$\eta \ (cm)$')
 plt.xlim(0,xx[-1]*1e-3)
@@ -527,19 +541,4 @@ plt.tight_layout(pad=1)
 plt.savefig("ssh_anomaly.png")
 plt.close()
 
-"""
-fig=plt.figure(figsize=(5,4))
-#ax5=fig.add_subplot(1, 2, 1)
-plt.plot(FZ.squeeze(),-zc)
-plt.xlabel(r'$F(z)$')
-plt.ylabel(r'$\eta \ (cm)$')
-plt.xlim(0,xx[-1]*1e-3)
-plt.tight_layout(pad=1)
-plt.title("Temperature profile")
-plt.savefig("ssh_anomaly.png")
-#plt.plot(FZg.squeeze(),-zc)
 
-ax6=fig.add_subplot(1, 2, 2)
-plt.plot(FpZ.squeeze(),-zc)
-#plt.plot(FpZg.squeeze(),-zc)
-"""
